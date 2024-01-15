@@ -96,7 +96,7 @@ spec:
                   description: Specify the GitLab Group or User to register the repository
 
   steps:
-    - id: sourcecode_template
+    - id: app-template
       name: Generating the Source Code Component
       action: fetch:template
       input:
@@ -111,7 +111,7 @@ spec:
           description: ${{ parameters.description }}
         targetPath: ./tenant-app
 
-    - id: manifest_template
+    - id: manifest-template
       name: Generating the K8s Manifest Component 
       action: fetch:template
       input:
