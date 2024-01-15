@@ -112,7 +112,7 @@ spec:
         targetPath: ./tenant-app
 
     - id: manifest_template
-      name: Generating the CI Component
+      name: Generating the K8s Manifest Component 
       action: fetch:template
       input:
         url: ./manifest-skeleton
