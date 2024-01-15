@@ -1,0 +1,15 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: ${{ values.app_name }}
+  {%- if values.description %}
+  description: ${{ values.description }}
+  {%- endif %}
+spec:
+  type: service 
+  system: ${{ values.system }}
+  lifecycle: production
+  owner: ${{ values.owner }}
+  git: ${{ values.git }}
+  git_host_url: ${{ values.git_host_url }}
+  git_owner_name: ${{ values.git_owner_name }}

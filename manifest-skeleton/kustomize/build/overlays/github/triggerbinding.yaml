@@ -1,0 +1,16 @@
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: ${{ values.app_name }}-trigger-binding
+spec:
+  params:
+    - name: git-app-rev
+      value: $(body.head_commit.id)
+    - name: git-app-url
+      value: 'https://${{ values.git_host_url }}/${{ values.git_owner_name }}/${{ values.app_name }}-app'
+    - name: git-manifests-url
+      value: 'https://${{ values.git_host_url }}/${{ values.git_owner_name }}/${{ values.app_name }}-manifest'
+    - name: git-user
+      value: $(body.pusher.name)
+    - name: git-email
+      value: $(body.pusher.email)

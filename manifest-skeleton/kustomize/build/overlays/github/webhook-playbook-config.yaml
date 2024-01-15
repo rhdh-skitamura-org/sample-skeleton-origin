@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: webhook-playbook
+data:
+  playbook.yaml: |
+    - hosts: localhost
+      vars_files:
+        - /secrets/env.yml
+      vars:
+        git_host_url: ${{ values.git_host_url }}
+        git_owner: ${{ values.git_owner_name }}
+        git_repo: ${{ values.app_name }}-app
+        webhook_url: "webhook-${{ values.app_name }}-el-${{ values.app_name }}-develop" 
+      tasks:
+        - name: Get current webhook
+          uri:
+            url: "https://api.{{ git_host_url }}/repos/{{ git_owner }}/{{ git_repo }}/hooks" 
+            method: GET
+            return_content: true
+            validate_certs: false
+            status_code: 200
+            headers:
+              Authorization: "Bearer {{ git_token }}"
+              Accept: application/vnd.github+json
+          register: r_github_hooks
+      
+        - name: Create webhook
+          when: r_github_hooks.json | length == 0
+          uri:
+            url: "https://api.{{ git_host_url }}/repos/{{ git_owner }}/{{ git_repo }}/hooks" 
+            method: POST
+            return_content: true
+            validate_certs: false
+            body_format: json
+            status_code: 201
+            headers:
+              Authorization: "Bearer {{ git_token }}"
+              Accept: application/vnd.github+json
+            body: >-
+              {
+                "name": "web",
+                "active": true,
+                "events": [
+                    "push",
+                ],
+                "config":{
+                    "url": "https://{{ webhook_url }}.{{ cluster_url }}",
+                    "secret": "{{ webhook_secret }}",
+                    "content_type": "json",
+                    "insecure_ssl": "0"
+                }
+              }

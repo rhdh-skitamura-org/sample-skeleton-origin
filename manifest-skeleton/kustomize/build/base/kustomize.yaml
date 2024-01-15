@@ -1,0 +1,33 @@
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: kustomize
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.17.0"
+    tekton.dev/tags: kubernetes
+spec:
+  description: >-
+    This Task use kustomize to simplifies the use of off-the-shelf applications.
+  workspaces:
+    - name: manifest-dir
+      optional: true
+  params:
+    - name: KUSTOMIZE_SCRIPT
+      description: The Kustomize CLI script to run
+      type: string
+      default: "kustomize $@"
+    - name: KUSTOMIZE_IMAGE
+      default: k8s.gcr.io/kustomize/kustomize:v4.0.2
+      description: kustomize wrapper image
+  steps:
+    - name: kustomize
+      image: $(params.KUSTOMIZE_IMAGE)
+      script: |
+        [[ "$(workspaces.manifest-dir.bound)" == "true" ]] && \
+        cd $(workspaces.manifest-dir.path) 
+
+        $(params.KUSTOMIZE_SCRIPT)
+

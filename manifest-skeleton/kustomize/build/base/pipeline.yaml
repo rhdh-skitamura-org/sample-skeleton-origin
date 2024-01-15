@@ -1,0 +1,166 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: ${{ values.app_name }}-pipeline
+spec:
+  workspaces:
+  - name: shared-workspace
+    description: Git Repo for Patient Health Records Apps
+  - name: manifest-workspace
+    description: Git Repo for k8s manifest
+  - name: sonar-settings
+    description: Temporary dir for sonarqube-scan Task
+  - name: vul-cache
+    description: Cache vulnerabilities infomations
+  - name: temp-dir
+    description: Temporary dir for git-cli Task
+  - name: basic-auth
+    description: .git-credentials file for git-cli Task
+  params:
+  - name: target-path
+    type: string 
+  #- name: imageurl
+  #  type: string
+  #  description: Target container registry URL
+  - name: git-url
+    type: string
+  - name: git-revision  
+    type: string
+  - name: git-manifests-url
+    type: string
+  - name: git-manifests-revision  
+    type: string
+  - name: git-manifests-username 
+    type: string
+    description: Git Repo Username for Manifests
+  - name: git-manifests-useremail  
+    type: string
+    description: Git Repo User Email for Manifests
+#  - name: git-manifests-user-access-token 
+#    type: string
+#    description: Git Repo User Access Token for Manifests
+  tasks:
+  - name: git-clone-${{ values.app_name }}
+    taskRef:
+      name: git-clone
+    params:
+    - name: url
+      value: $(params.git-url)
+    - name: revision
+      value: $(params.git-revision)
+    workspaces:
+    - name: output
+      workspace: shared-workspace
+      
+  - name: git-clone-${{ values.app_name }}-manifests
+    taskRef:
+      name: git-clone
+    params:
+    - name: url
+      value: $(params.git-manifests-url)
+    - name: revision
+      value: $(params.git-manifests-revision)
+    workspaces:
+    - name: output
+      workspace: manifest-workspace
+
+  - name: scan-app
+    taskRef:
+      name: sonarqube-scanner
+    runAfter:
+    - git-clone-${{ values.app_name }}
+    - git-clone-${{ values.app_name }}-manifests
+    params:
+    - name: SONAR_HOST_URL
+      value: 'http://sonarqube.sonarqube.svc:9000'
+    workspaces:
+    - name: source
+      workspace: shared-workspace
+    - name: sonar-settings
+      workspace: sonar-settings
+
+  - name: build-container
+    taskRef:
+      name: s2i-nodejs
+      kind: ClusterTask
+    runAfter:
+    - scan-app
+    workspaces:
+    - name: source
+      workspace: shared-workspace
+    params:
+    - name: PATH_CONTEXT
+      value: $(workspaces.source.path)/$(params.target-path)
+    - name: IMAGE
+      value: image-registry.openshift-image-registry.svc:5000/${{ values.app_name }}-develop/${{ values.app_name }}-record:$(params.git-revision)
+
+  - name: test-container
+    taskRef:
+      name: trivy
+    runAfter:
+    - build-container
+    workspaces:
+    - name: cache
+      workspace: vul-cache
+    params:
+    - name: IMAGE
+      value: image-registry.openshift-image-registry.svc:5000/${{ values.app_name }}-develop/${{ values.app_name }}-record
+    - name: IMAGE_DIGEST
+      value: $(tasks.build-container.results.IMAGE_DIGEST)
+
+  - name: update-manifests
+    taskRef:
+      name: kustomize
+    runAfter:
+    - test-container
+    workspaces:
+    - name: manifest-dir
+      workspace: manifest-workspace
+    params:
+    - name: KUSTOMIZE_SCRIPT
+      value: |
+        cd ./kustomize/app/overlays/dev
+        kustomize edit set image ___IMAGE_URL___@___IMAGE_DIGEST___=image-registry.openshift-image-registry.svc:5000/${{ values.app_name }}-develop/${{ values.app_name }}-record@$(tasks.build-container.results.IMAGE_DIGEST)
+        cd ../stg
+        kustomize edit set image ___IMAGE_URL___@___IMAGE_DIGEST___=image-registry.openshift-image-registry.svc:5000/${{ values.app_name }}-develop/${{ values.app_name }}-record@$(tasks.build-container.results.IMAGE_DIGEST)
+        cd ../prod
+        kustomize edit set image ___IMAGE_URL___@___IMAGE_DIGEST___=image-registry.openshift-image-registry.svc:5000/${{ values.app_name }}-develop/${{ values.app_name }}-record@$(tasks.build-container.results.IMAGE_DIGEST)
+
+
+  - name: push-manifests
+    taskRef:
+      name: git-cli
+    runAfter:
+    - update-manifests
+    workspaces:
+    - name: source
+      workspace: manifest-workspace
+    - name: input
+      workspace: temp-dir
+    - name: basic-auth
+      workspace: basic-auth
+    params:
+    - name: GIT_USER_NAME
+      value: $(params.git-manifests-username)
+    - name: GIT_USER_EMAIL
+      value: $(params.git-manifests-useremail)
+    - name: GIT_MANIFEST_REV
+      value: $(params.git-manifests-revision)
+    - name: GIT_SCRIPT
+      value: |
+        cd $(workspaces.source.path)
+        git checkout $(params.git-manifests-revision)
+        git diff
+        git add -A ./kustomize/app/overlays/
+        git commit -m "[TEKTON-PIPELINES] Change container image in manifests."
+        git push origin $(params.git-manifests-revision)
+#        git config --global url.https://$(params.git-manifests-username):$(params.gitmanifests-user-access-token)@github.com/.insteadOf https://github.com/
+#      value: |
+#        cd $(workspaces.source.path)
+#        git config --global user.email $(GIT_USER_EMAIL) 
+#        git config --global user.name $(GIT_USER_NAME)
+#        git checkout $(GIT_MANIFEST_REV)
+#        git diff
+#        git add -A ./kustomize/app/overlays/
+#        git commit -m "[TEKTON-PIPELINES] Change container image in manifests."
+#        git push origin $(GIT_MANIFEST_REV)

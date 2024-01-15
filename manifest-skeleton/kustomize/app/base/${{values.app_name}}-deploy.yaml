@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: health-record
+  name: health-record
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: health-record
+  template:
+    metadata:
+      labels:
+        app: health-record
+      annotations:
+        sidecar.istio.io/inject: "true"
+    spec:
+      containers:
+      - image: ___IMAGE_URL___@___IMAGE_DIGEST___
+        name: health-record
+        ports:
+        - containerPort: 8080
+          protocol: TCP
